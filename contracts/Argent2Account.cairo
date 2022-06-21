@@ -25,6 +25,13 @@ namespace IPlugin:
         calldata: felt*
     ):
     end
+
+    # Method to write data during Init (delegate call)
+    func initialize(
+        plugin_data_len: felt,
+        plugin_data: felt*,
+    ):
+    end
 end
 
 ####################
@@ -38,7 +45,7 @@ const USE_PLUGIN_SELECTOR = 1121675007639292412441492001821602921366030142137563
 
 const ERC165_ACCOUNT_INTERFACE = 0xf10dbd44
 
-const DEFAULT_PLUGIN = 0x00
+#const DEFAULT_PLUGIN = 0x00
 
 ####################
 # STRUCTS
@@ -85,12 +92,50 @@ func _current_plugin() -> (res: felt):
 end
 
 @storage_var
+func _default_plugin() -> (res: felt):
+end
+
+@storage_var
 func _plugins(plugin: felt) -> (res: felt):
 end
 
 ####################
 # EXTERNAL FUNCTIONS
 ####################
+
+@external
+func initialize{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
+        range_check_ptr
+    } (
+        plugin_id: felt,
+        plugin_data_len: felt,
+        plugin_data: felt*
+
+    ):
+    alloc_locals
+
+    # check that we are not already initialized
+    let (current_plugin) = _default_plugin.read()
+    with_attr error_message("already initialized"):
+        assert current_plugin = 0
+    end
+    # check that the target signer is not zero
+    with_attr error_message("signer cannot be null"):
+        assert_not_zero(plugin_id)
+    end
+    
+    # initialize the contract
+    IPlugin.library_call_initialize(
+        class_hash=plugin_id,
+        plugin_data_len=plugin_data_len,
+        plugin_data=plugin_data
+    )
+
+    _default_plugin.write(plugin_id)    
+    return ()
+end
 
 @external
 @raw_output
@@ -123,8 +168,9 @@ func __execute__{
         let (response_len, response) = execute_with_plugin(plugin_id, plugin_data_len, plugin_data, call_array_len - 1, call_array + CallArray.SIZE, calldata_len, calldata)
         return (retdata_size=response_len, retdata=response)
     else:
-        validate_with_plugin(DEFAULT_PLUGIN, 0, plugin_data, call_array_len, call_array, calldata_len, calldata)
-        let (response_len, response) = execute_with_plugin(DEFAULT_PLUGIN, 0, plugin_data, call_array_len, call_array, calldata_len, calldata)
+        let (default_plugin) = _default_plugin.read()
+        validate_with_plugin(default_plugin, 0, plugin_data, call_array_len, call_array, calldata_len, calldata)
+        let (response_len, response) = execute_with_plugin(default_plugin, 0, plugin_data, call_array_len, call_array, calldata_len, calldata)
         return (retdata_size=response_len, retdata=response)
     end
 end
@@ -193,9 +239,10 @@ func __default__{
     ):
 
     let (current_plugin) = get_current_plugin()
+    let (default_plugin) = _default_plugin.read()
 
     let (retdata_size : felt, retdata : felt*) = library_call(
-        class_hash=current_plugin,
+        class_hash=default_plugin,
         function_selector=selector,
         calldata_size=calldata_size,
         calldata=calldata)
@@ -346,8 +393,9 @@ func get_current_plugin{
         range_check_ptr
     } () -> (current_plugin: felt):
     let (current_plugin) = _current_plugin.read()
+    let (default_plugin) = _default_plugin.read()
     if current_plugin == 0:
-        return (DEFAULT_PLUGIN)
+        return (default_plugin)
     end
     return (current_plugin)
 end

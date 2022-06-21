@@ -163,24 +163,19 @@ func initialize{
         pedersen_ptr: HashBuiltin*,
         range_check_ptr
     } (
-        signer: felt,
-        guardian: felt
-    ):
-    # check that we are not already initialized
-    let (current_signer) = _signer.read()
-    with_attr error_message("already initialized"):
-        assert current_signer = 0
+        plugin_data_len: felt,
+        plugin_data: felt*
+    ) -> ():
+    alloc_locals
+    let signer = [plugin_data]
+    tempvar has_guardian = plugin_data_len - 2
+    if has_guardian == 0:
+        let guardian = [plugin_data +1]
+        _guardian.write(guardian)
+        _signer.write(signer)
+    else:    
+        _signer.write(signer)   
     end
-    # check that the target signer is not zero
-    with_attr error_message("signer cannot be null"):
-        assert_not_zero(signer)
-    end
-    # initialize the contract
-    _signer.write(signer)
-    _guardian.write(guardian)
-    # emit event
-    let (self) = get_contract_address()
-    account_created.emit(account=self, key=signer, guardian=guardian)
     return ()
 end
 
@@ -515,7 +510,6 @@ func assert_no_self_call(
     return()
 end
 
-
 func validate_signer_signature{
         syscall_ptr: felt*, 
         pedersen_ptr: HashBuiltin*,
@@ -525,6 +519,29 @@ func validate_signer_signature{
         message: felt, 
         signatures: felt*,
         signatures_len: felt
+    ) -> (is_valid: felt):
+    with_attr error_message("signer signature invalid"):
+        assert_nn(signatures_len - 2)
+        let (signer) = _signer.read()
+        verify_ecdsa_signature(
+            message=message,
+            public_key=signer,
+            signature_r=signatures[0],
+            signature_s=signatures[1])
+    end
+    return(is_valid=TRUE)
+end
+
+@view
+func validate_signer_signature2{
+        syscall_ptr: felt*, 
+        pedersen_ptr: HashBuiltin*,
+        ecdsa_ptr: SignatureBuiltin*,
+        range_check_ptr
+    } (
+        message: felt, 
+        signatures_len: felt,
+        signatures: felt*
     ) -> (is_valid: felt):
     with_attr error_message("signer signature invalid"):
         assert_nn(signatures_len - 2)
