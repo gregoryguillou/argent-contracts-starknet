@@ -29,6 +29,26 @@ class TransactionSender():
                 signatures += list(signer.sign(transaction_hash))
 
         return await self.account.__execute__(call_array, calldata, nonce).invoke(signature=signatures)
+    
+    async def send_transaction_with_public_key(self, calls, signers, nonce=None, max_fee=0):
+        if nonce is None:
+            execution_info = await self.account.get_nonce().call()
+            nonce = execution_info.result.nonce
+
+        calls_with_selector = [(call[0], get_selector_from_name(call[1]), call[2]) for call in calls]
+        call_array, calldata = from_call_to_call_array(calls)
+
+        transaction_hash = get_transaction_hash(self.account.contract_address, call_array, calldata, nonce, max_fee)
+
+        signatures = []
+        for signer in signers:
+            if signer == 0:
+                signatures += [0, 0, 0]
+            else:    
+                sig_r, sig_s = signer.sign(transaction_hash)
+                signatures += [sig_r, sig_s, signer.public_key]
+
+        return await self.account.__execute__(call_array, calldata, nonce).invoke(signature=signatures)
 
 def from_call_to_call_array(calls):
     call_array = []
