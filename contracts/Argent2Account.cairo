@@ -134,6 +134,7 @@ func initialize{
     )
 
     _default_plugin.write(plugin_id)    
+    _plugins.write(plugin_id, 1)
     return ()
 end
 
@@ -175,6 +176,7 @@ func __execute__{
     end
 end
 
+# TODO ADD INITIALIZE
 @external
 func add_plugin{
         syscall_ptr: felt*,
@@ -190,7 +192,18 @@ func add_plugin{
     with_attr error_message("plugin cannot be null"):
         assert_not_zero(plugin)
     end
+    
     _plugins.write(plugin, 1)
+
+    # if plugin_data_len == 0:
+    #     return ()
+    # end 
+
+    # IPlugin.library_call_initialize(
+    #     class_hash=plugin,
+    #     plugin_data_len=plugin_data_len,
+    #     plugin_data=plugin_data
+    # )
     return()
 end
 
@@ -326,6 +339,7 @@ func use_plugin{
         return(is_plugin=FALSE, plugin_id=0, plugin_data_len=0, plugin_data=plugin_data)
     end
     let plugin_id = calldata[call_array[0].data_offset]
+    # should this assert???
     let (is_plugin) = _plugins.read(plugin_id)
     memcpy(plugin_data, calldata + call_array[0].data_offset + 1, call_array[0].data_len - 1)
     return(is_plugin=is_plugin, plugin_id=plugin_id, plugin_data_len=call_array[0].data_len - 1, plugin_data=plugin_data)

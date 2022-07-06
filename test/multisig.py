@@ -104,35 +104,6 @@ async def test_add_plugin(account_factory, plugin_factory):
     tx_exec_info = await sender.send_transaction_with_public_key([(account.contract_address, 'add_plugin', [plugin_class])], [signer, signer2])
     assert (await account.is_plugin(plugin_class).call()).result.success == (1)
 
-
-@pytest.mark.asyncio
-async def test_call_dapp_with_session_key(account_factory, plugin_factory, dapp_factory, get_starknet):
-    account = account_factory
-    plugin, plugin_class = plugin_factory
-    dapp, dapp_class = dapp_factory
-    starknet = get_starknet
-    sender = TransactionSender(account)
-
-    tx_exec_info = await sender.send_transaction([(account.contract_address, 'add_plugin', [plugin_class])], [signer])
-
-    session_token = get_session_token(session_key.public_key, DEFAULT_TIMESTAMP + 10)
-    assert (await dapp.get_number(account.contract_address).call()).result.number == 0
-    update_starknet_block(starknet=starknet, block_timestamp=(DEFAULT_TIMESTAMP))
-    tx_exec_info = await sender.send_transaction(
-        [
-            (account.contract_address, 'use_plugin', [plugin_class, session_key.public_key, DEFAULT_TIMESTAMP + 10, session_token[0], session_token[1]]),
-            (dapp.contract_address, 'set_number', [47])
-        ], 
-        [session_key])
-
-    assert_event_emmited(
-        tx_exec_info,
-        from_address=account.contract_address,
-        name='transaction_executed'
-    )
-
-    assert (await dapp.get_number(account.contract_address).call()).result.number == 47
-
 def get_session_token(key, expires):
     session = [
         key,
