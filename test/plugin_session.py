@@ -7,6 +7,7 @@ from utils.Signer import Signer
 from utils.utilities import deploy, declare, assert_revert, str_to_felt, assert_event_emmited
 from utils.TransactionSender import TransactionSender
 from starkware.cairo.common.hash_state import compute_hash_on_elements
+from starkware.starknet.compiler.compile import get_selector_from_name
 
 LOGGER = logging.getLogger(__name__)
 
@@ -94,12 +95,12 @@ async def test_call_dapp_with_session_key(account_factory, plugin_factory, dapp_
 
     tx_exec_info = await sender.send_transaction([(account.contract_address, 'add_plugin', [plugin_class])], [signer])
 
-    session_token = get_session_token(session_key.public_key, DEFAULT_TIMESTAMP + 10)
+    session_token = get_session_token(session_key.public_key, DEFAULT_TIMESTAMP + 10, dapp.contract_address, get_selector_from_name('set_number'))
     assert (await dapp.get_number(account.contract_address).call()).result.number == 0
     update_starknet_block(starknet=starknet, block_timestamp=(DEFAULT_TIMESTAMP))
     tx_exec_info = await sender.send_transaction(
         [
-            (account.contract_address, 'use_plugin', [plugin_class, session_key.public_key, DEFAULT_TIMESTAMP + 10, session_token[0], session_token[1]]),
+            (account.contract_address, 'use_plugin', [plugin_class, session_key.public_key, DEFAULT_TIMESTAMP + 10, session_token[0], session_token[1], dapp.contract_address, get_selector_from_name('set_number')]),
             (dapp.contract_address, 'set_number', [47])
         ], 
         [session_key])
@@ -112,10 +113,22 @@ async def test_call_dapp_with_session_key(account_factory, plugin_factory, dapp_
 
     assert (await dapp.get_number(account.contract_address).call()).result.number == 47
 
-def get_session_token(key, expires):
+    await assert_revert(sender.send_transaction(
+        [
+            (account.contract_address, 'use_plugin', [plugin_class, session_key.public_key, DEFAULT_TIMESTAMP + 10, session_token[0], session_token[1], dapp.contract_address, get_selector_from_name('set_number')]),
+            (dapp.contract_address, 'increase_number', [2])
+        ], 
+        [session_key]),
+        "unauthorised policy"
+    )
+
+# Need to take an array of (contract, function)
+def get_session_token(key, expires, contract, function):
     session = [
         key,
-        expires
+        expires,
+        contract,
+        function
     ]
     hash = compute_hash_on_elements(session)
     return signer.sign(hash)
